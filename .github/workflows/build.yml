@@ -1,0 +1,148 @@
+name: build
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_mode:
+        description: 'Release mode'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+        - development
+        - release
+
+env:
+  REPO: 'bol-van/zapret'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.gh.outputs.tag }}
+      date: ${{ steps.gh.outputs.date }}
+      sha: ${{ steps.gh.outputs.sha }}
+    steps:
+      - name: Get repo data via GH API
+        id: gh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH=$(gh api repos/$REPO --jq '.default_branch')
+          DATE=$(gh api repos/$REPO/commits/$BRANCH --jq '.commit.committer.date')
+          {
+            echo "date=$(date --utc -d $DATE +%Y%m%d)"
+            echo "tag=$(gh api repos/$REPO/releases/latest --jq '.tag_name')"
+            echo "sha=$(gh api repos/$REPO/commits/$BRANCH --jq '.sha[0:7]')"
+          } >> $GITHUB_OUTPUT
+
+  build:
+    needs: [ check ]
+    name: ${{ matrix.abi }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - abi: armeabi-v7a
+            target: armv7a-linux-androideabi
+          - abi: arm64-v8a
+            target: aarch64-linux-android
+          - abi: x86
+            target: i686-linux-android
+          - abi: x86_64
+            target: x86_64-linux-android
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Checkout zapret
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.REPO }}
+          ref: ${{ inputs.release_mode == 'release' && needs.check.outputs.tag || null }}
+          path: zapret
+
+      - name: Build
+        env:
+          ABI: ${{ matrix.abi }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          env | sort
+          DEPS_DIR=$GITHUB_WORKSPACE/deps
+          export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
+          export API=21
+          export CC="$TOOLCHAIN/bin/clang --target=$TARGET$API"
+          export CXX="$TOOLCHAIN/bin/clang++ --target=$TARGET$API"
+          export AR=$TOOLCHAIN/bin/llvm-ar
+          export AS=$CC
+          export LD=$TOOLCHAIN/bin/ld
+          export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
+          export STRIP=$TOOLCHAIN/bin/llvm-strip
+          export PKG_CONFIG_PATH=$DEPS_DIR/lib/pkgconfig
+
+          # netfilter libs
+          wget -qO- https://www.netfilter.org/pub/libnfnetlink/libnfnetlink-1.0.2.tar.bz2 | tar -xj
+          wget -qO- https://www.netfilter.org/pub/libmnl/libmnl-1.0.5.tar.bz2 | tar -xj
+          wget -qO- https://www.netfilter.org/pub/libnetfilter_queue/libnetfilter_queue-1.0.5.tar.bz2 | tar -xj
+          patch -p1 -d libnetfilter_queue-* -i ../libnetfilter_queue.patch
+
+          for i in libmnl libnfnetlink libnetfilter_queue ; do
+            (
+              cd $i-*
+              CFLAGS=-Wno-implicit-function-declaration \
+              ./configure --prefix= --host=$TARGET --enable-static --disable-shared && \
+              make install -j$(nproc) DESTDIR=$DEPS_DIR
+            )
+            sed -i "s|^prefix=.*|prefix=$DEPS_DIR|g" $DEPS_DIR/lib/pkgconfig/$i.pc
+          done
+
+          # headers
+          # wget https://git.alpinelinux.org/aports/plain/main/bsd-compat-headers/queue.h && \
+          # wget https://git.kernel.org/pub/scm/libs/libcap/libcap.git/plain/libcap/include/sys/capability.h && \
+          sudo apt update -qq && sudo apt install -y libcap-dev
+          install -Dm644 -t $DEPS_DIR/include/sys /usr/include/x86_64-linux-gnu/sys/queue.h /usr/include/sys/capability.h
+
+          # zapret
+          patch -p1 -d zapret -i ../zapret-android.patch
+          CFLAGS="-O3 -I$DEPS_DIR/include" LDFLAGS="-O3 -L$DEPS_DIR/lib" \
+          make -C zapret/nfq -j$(nproc)
+          zip nfqws-$ABI.zip -j zapret/nfq/nfqws
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfqws-${{ matrix.abi }}
+          path: nfqws-*.zip
+          if-no-files-found: error
+
+  release:
+    needs: [ check, build ]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: nfqws-*
+          merge-multiple: true
+
+      - name: Delete existing release
+        if: inputs.release_mode == 'development'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete development --cleanup-tag -y -R ${{ github.repository }} || true
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          fail_on_unmatched_files: true
+          prerelease: ${{ inputs.release_mode == 'release' && 'false' || 'true' }}
+          draft: false
+          # target_commitish: ${{ inputs.release_mode == 'release' && '751472a' || null }}
+          tag_name: ${{ inputs.release_mode == 'release' && needs.check.outputs.tag || inputs.release_mode }}
+          name: ${{ inputs.release_mode == 'release' && needs.check.outputs.tag || format('{0}.{1}', needs.check.outputs.date, needs.check.outputs.sha) }}
+          body: |
+            ${{ inputs.release_mode == 'release' && format('* Release {0}', needs.check.outputs.tag) || format('* commit: {0}@{1}', env.REPO, needs.check.outputs.sha) }}
+          files: nfqws-*.zip
