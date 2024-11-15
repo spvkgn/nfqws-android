@@ -9,8 +9,8 @@ on:
         default: 'release'
         type: choice
         options:
-        - development
         - release
+        - development
 
 env:
   REPO: 'bol-van/zapret'
@@ -55,7 +55,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Checkout zapret
+      - name: Checkout ${{ env.REPO }}
         uses: actions/checkout@v4
         with:
           repository: ${{ env.REPO }}
@@ -90,17 +90,11 @@ jobs:
             (
               cd $i-*
               CFLAGS=-Wno-implicit-function-declaration \
-              ./configure --prefix= --host=$TARGET --enable-static --disable-shared && \
+              ./configure --prefix= --host=$TARGET --enable-static --disable-shared --disable-dependency-tracking
               make install -j$(nproc) DESTDIR=$DEPS_DIR
             )
             sed -i "s|^prefix=.*|prefix=$DEPS_DIR|g" $DEPS_DIR/lib/pkgconfig/$i.pc
           done
-
-          # headers
-          # wget https://git.alpinelinux.org/aports/plain/main/bsd-compat-headers/queue.h && \
-          # wget https://git.kernel.org/pub/scm/libs/libcap/libcap.git/plain/libcap/include/sys/capability.h && \
-          sudo apt update -qq && sudo apt install -y libcap-dev
-          install -Dm644 -t $DEPS_DIR/include/sys /usr/include/x86_64-linux-gnu/sys/queue.h /usr/include/sys/capability.h
 
           # zapret
           patch -p1 -d zapret -i ../zapret-android.patch
@@ -116,6 +110,7 @@ jobs:
           if-no-files-found: error
 
   release:
+    if: github.event_name == 'workflow_dispatch'
     needs: [ check, build ]
     permissions:
       contents: write
@@ -127,12 +122,12 @@ jobs:
           pattern: nfqws-*
           merge-multiple: true
 
-      - name: Delete existing release
+      - name: Delete development release
         if: inputs.release_mode == 'development'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release delete development --cleanup-tag -y -R ${{ github.repository }} || true
+          gh release delete ${{ inputs.release_mode }} --cleanup-tag -y -R ${{ github.repository }} || true
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
@@ -144,5 +139,5 @@ jobs:
           tag_name: ${{ inputs.release_mode == 'release' && needs.check.outputs.tag || inputs.release_mode }}
           name: ${{ inputs.release_mode == 'release' && needs.check.outputs.tag || format('{0}.{1}', needs.check.outputs.date, needs.check.outputs.sha) }}
           body: |
-            ${{ inputs.release_mode == 'release' && format('* Release {0}', needs.check.outputs.tag) || format('* commit: {0}@{1}', env.REPO, needs.check.outputs.sha) }}
+            ${{ inputs.release_mode == 'release' && format('* Release {0}', needs.check.outputs.tag) || format('* commit {0}@{1}', env.REPO, needs.check.outputs.sha) }}
           files: nfqws-*.zip
