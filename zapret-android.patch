@@ -1,0 +1,206 @@
+diff --git a/nfq/nfqws.c b/nfq/nfqws.c
+index 20e4e30..4f738ec 100644
+--- a/nfq/nfqws.c
++++ b/nfq/nfqws.c
+@@ -553,16 +553,20 @@ static bool parse_ws_scale_factor(char *s, uint16_t *wsize, uint8_t *wscale)
+ 
+ 
+ #ifndef __OpenBSD__
++#ifndef __ANDROID__
+ static void cleanup_args()
+ {
+ 	wordfree(&params.wexp);
+ }
+ #endif
++#endif
+ 
+ static void cleanup_params(void)
+ {
+ #ifndef __OpenBSD__
++#ifndef __ANDROID__
+ 	cleanup_args();
++#endif
+ #endif
+ 
+ 	ConntrackPoolDestroy(&params.conntrack);
+@@ -980,7 +984,9 @@ static void exithelp(void)
+ {
+ 	printf(
+ #ifndef __OpenBSD__
++#ifndef __ANDROID__
+ 		" @<config_file>|$<config_file>\t\t\t; read file for options. must be the only argument. other options are ignored.\n\n"
++#endif
+ #endif
+ 		" --debug=0|1|syslog|@<filename>\n"
+ #ifdef __linux__
+@@ -1094,6 +1100,7 @@ static void exithelp_clean(void)
+ }
+ 
+ #ifndef __OpenBSD__
++#ifndef __ANDROID__
+ // no static to not allow optimizer to inline this func (save stack)
+ void config_from_file(const char *filename)
+ {
+@@ -1119,6 +1126,7 @@ void config_from_file(const char *filename)
+ 	}
+ }
+ #endif
++#endif
+ 
+ int main(int argc, char **argv)
+ {
+@@ -1187,12 +1195,14 @@ int main(int argc, char **argv)
+ #endif
+ 
+ #ifndef __OpenBSD__
++#ifndef __ANDROID__
+ 	if (argc>=2 && (argv[1][0]=='@' || argv[1][0]=='$'))
+ 	{
+ 		config_from_file(argv[1]+1);
+ 		argv=params.wexp.we_wordv;
+ 		argc=params.wexp.we_wordc;
+ 	}
++#endif
+ #endif
+ 
+ 	const struct option long_options[] = {
+@@ -1952,7 +1962,9 @@ int main(int argc, char **argv)
+ 
+ 	// do not need args from file anymore
+ #ifndef __OpenBSD__
++#ifndef __ANDROID__
+ 	cleanup_args();
++#endif
+ #endif
+ 	argv=NULL; argc=0;
+ 	
+diff --git a/nfq/params.h b/nfq/params.h
+index b6b912b..f1e058d 100644
+--- a/nfq/params.h
++++ b/nfq/params.h
+@@ -15,8 +15,10 @@
+ #include <time.h>
+ #include <sys/queue.h>
+ #ifndef __OpenBSD__
++#ifndef __ANDROID__
+ #include <wordexp.h>
+ #endif
++#endif
+ 
+ #define TLS_PARTIALS_ENABLE	true
+ 
+@@ -104,7 +106,9 @@ bool dp_list_have_autohostlist(struct desync_profile_list_head *head);
+ struct params_s
+ {
+ #ifndef __OpenBSD__
++#ifndef __ANDROID__
+ 	wordexp_t wexp; // for file based config
++#endif
+ #endif
+ 
+ 	enum log_target debug_target;
+diff --git a/tpws/params.h b/tpws/params.h
+index 3afa694..73e5b04 100644
+--- a/tpws/params.h
++++ b/tpws/params.h
+@@ -7,8 +7,10 @@
+ #include <sys/queue.h>
+ #include <time.h>
+ #ifndef __OpenBSD__
++#ifndef __ANDROID__
+ #include <wordexp.h>
+ #endif
++#endif
+ 
+ #include "tpws.h"
+ #include "pools.h"
+@@ -86,7 +88,9 @@ void dp_list_destroy(struct desync_profile_list_head *head);
+ struct params_s
+ {
+ #ifndef __OpenBSD__
++#ifndef __ANDROID__
+ 	wordexp_t wexp; // for file based config
++#endif
+ #endif
+ 
+ 	int debug;
+diff --git a/tpws/tpws.c b/tpws/tpws.c
+index 8136da3..5747c6e 100644
+--- a/tpws/tpws.c
++++ b/tpws/tpws.c
+@@ -123,7 +123,9 @@ static void exithelp(void)
+ {
+ 	printf(
+ #ifndef __OpenBSD__
++#ifndef __ANDROID__
+ 		" @<config_file>|$<config_file>\t\t; read file for options. must be the only argument. other options are ignored.\n\n"
++#endif
+ #endif
+ 		" --bind-addr=<v4_addr>|<v6_addr>\t; for v6 link locals append %%interface_name\n"
+ 		" --bind-iface4=<interface_name>\t\t; bind to the first ipv4 addr of interface\n"
+@@ -216,15 +218,19 @@ static void exithelp(void)
+ 	exit(1);
+ }
+ #ifndef __OpenBSD__
++#ifndef __ANDROID__
+ static void cleanup_args()
+ {
+ 	wordfree(&params.wexp);
+ }
+ #endif
++#endif
+ static void cleanup_params(void)
+ {
+ #ifndef __OpenBSD__
++#ifndef __ANDROID__
+ 	cleanup_args();
++#endif
+ #endif
+ 
+ 	dp_list_destroy(&params.desync_profiles);
+@@ -473,6 +479,7 @@ static bool parse_pf_list(char *opt, struct port_filters_head *pfl)
+ }
+ 
+ #ifndef __OpenBSD__
++#ifndef __ANDROID__
+ // no static to not allow optimizer to inline this func (save stack)
+ void config_from_file(const char *filename)
+ {
+@@ -498,6 +505,7 @@ void config_from_file(const char *filename)
+ 	}
+ }
+ #endif
++#endif
+ 
+ #ifndef __linux__
+ static bool check_oob_disorder(const struct desync_profile *dp)
+@@ -548,6 +556,7 @@ void parse_params(int argc, char *argv[])
+ 	dp->n = ++desync_profile_count;
+ 
+ #ifndef __OpenBSD__
++#ifndef __ANDROID__
+ 	if (argc>=2 && (argv[1][0]=='@' || argv[1][0]=='$'))
+ 	{
+ 		config_from_file(argv[1]+1);
+@@ -555,7 +564,8 @@ void parse_params(int argc, char *argv[])
+ 		argc=params.wexp.we_wordc;
+ 	}
+ #endif
+-	
++#endif
++
+ 	const struct option long_options[] = {
+ 		{ "help",no_argument,0,0 },// optidx=0
+ 		{ "h",no_argument,0,0 },// optidx=1
+@@ -1289,9 +1299,11 @@ void parse_params(int argc, char *argv[])
+ 	VPRINT("\n");
+ 
+ #ifndef __OpenBSD__
++#ifndef __ANDROID__
+ 	// do not need args from file anymore
+ 	cleanup_args();
+ #endif
++#endif
+ }
+ 
+ 

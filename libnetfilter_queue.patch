@@ -1,0 +1,41 @@
+--- a/src/extra/pktbuff.c
++++ b/src/extra/pktbuff.c
+@@ -14,7 +14,7 @@
+ #include <string.h> /* for memcpy */
+ #include <stdbool.h>
+ 
+-#include <netinet/if_ether.h>
++#include <linux/if_ether.h>
+ #include <netinet/ip.h>
+ #include <netinet/tcp.h>
+ 
+--- a/src/nlmsg.c
++++ b/src/nlmsg.c
+@@ -21,7 +21,7 @@
+ 
+ #include <linux/netfilter/nfnetlink_queue.h>
+ 
+-#include <libnetfilter_queue/libnetfilter_queue.h>
++// #include <libnetfilter_queue/libnetfilter_queue.h>
+ 
+ #include "internal.h"
+ 
+--- a/src/extra/tcp.c
++++ b/src/extra/tcp.c
+@@ -134,16 +134,6 @@ void nfq_tcp_compute_checksum_ipv6(struc
+  * @}
+  */
+ 
+-/*
+- *	The union cast uses a gcc extension to avoid aliasing problems
+- *  (union is compatible to any of its members)
+- *  This means this part of the code is -fstrict-aliasing safe now.
+- */
+-union tcp_word_hdr {
+-	struct tcphdr hdr;
+-	uint32_t  words[5];
+-};
+-
+ #define tcp_flag_word(tp) ( ((union tcp_word_hdr *)(tp))->words[3])
+ 
+ /**
