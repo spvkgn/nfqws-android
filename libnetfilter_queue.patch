@@ -22,20 +22,20 @@
  
 --- a/src/extra/tcp.c
 +++ b/src/extra/tcp.c
-@@ -134,16 +134,6 @@ void nfq_tcp_compute_checksum_ipv6(struc
-  * @}
+@@ -139,12 +139,16 @@ void nfq_tcp_compute_checksum_ipv6(struc
+  *  (union is compatible to any of its members)
+  *  This means this part of the code is -fstrict-aliasing safe now.
   */
++#ifndef __ANDROID__
+ union tcp_word_hdr {
+ 	struct tcphdr hdr;
+ 	uint32_t  words[5];
+ };
++#endif
  
--/*
-- *	The union cast uses a gcc extension to avoid aliasing problems
-- *  (union is compatible to any of its members)
-- *  This means this part of the code is -fstrict-aliasing safe now.
-- */
--union tcp_word_hdr {
--	struct tcphdr hdr;
--	uint32_t  words[5];
--};
--
++#ifndef tcp_flag_word
  #define tcp_flag_word(tp) ( ((union tcp_word_hdr *)(tp))->words[3])
++#endif
  
  /**
+  * nfq_pkt_snprintf_tcp_hdr - print tcp header into one buffer in a humnan
